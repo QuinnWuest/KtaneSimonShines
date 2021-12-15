@@ -4162,6 +4162,6 @@ MonoBehaviour:
   - {fileID: 108288769236867352}
   - {fileID: 108845535497169446}
   - {fileID: 108057024900371638}
-  Emitter: {fileID: 2100000, guid: 0ea59ada7b2218d4484e66f652927e42, type: 2}
+  Emitter: {fileID: 23888292665892396}
   LightParent: {fileID: 1775989763359044}
   SimonShines: {fileID: 114919168110105112}

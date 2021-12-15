@@ -11,7 +11,6 @@ using rnd = UnityEngine.Random;
 
 public class SimonShinesScript : MonoBehaviour
 {
-
     public KMAudio Audio;
     public KMBombInfo Bomb;
     public KMBombModule Module;
@@ -19,15 +18,12 @@ public class SimonShinesScript : MonoBehaviour
     public KMSelectable OnSwitch;
     public KMSelectable OffSwitch;
     public Light[] Lights;
-    public Material Emitter;
+    public MeshRenderer Emitter;
     public GameObject LightParent;
     public KMSelectable SimonShines;
 
-    private bool firstPress = true;
     private bool offPressed = false;
-    private int newSecond;
-    private int initialSecond;
-    private int pressedSecond;
+    private float pressedTime;
     private int currentStage = 0;
 
     struct Colors
@@ -39,8 +35,8 @@ public class SimonShinesScript : MonoBehaviour
 
     private Colors[] colors;
 
-    private int[][] stageColors = new int[4][];
-    private int[] stageSeconds = new int[4];
+    private readonly int[][] stageColors = new int[4][];
+    private readonly int[] stageSeconds = new int[5];
 
     static int moduleIdCounter = 1;
     int moduleId;
@@ -53,22 +49,24 @@ public class SimonShinesScript : MonoBehaviour
             if (moduleSolved)
                 return false;
 
-            if ((firstPress ? initialSecond : stageSeconds[currentStage]) != (int) (Bomb.GetTime() % 10))
+            var digit = (int) (Bomb.GetTime() % 10);
+            if (stageSeconds[currentStage] != digit)
             {
+                Debug.LogFormat(@"[Simon Shines #{0}] Defuser struck! Switch was pressed at digit {1} instead of {2}. Reset to beginning.", moduleId, digit, stageSeconds[currentStage]);
                 Module.HandleStrike();
-                Debug.LogFormat(@"[Simon Shines #{0}] Defuser struck! Reason: Switch was pressed at an incorrect time", moduleId);
+                currentStage = 0;
                 return false;
             }
-            firstPress = false;
-            pressedSecond = (int) Bomb.GetTime();
+            pressedTime = Time.time;
 
-            if (stageColors[currentStage].Length > 1)
-                StartCoroutine(Counter(flash: true));
+            offPressed = false;
+            if (currentStage == 4)
+            {
+                moduleSolved = true;
+                StartCoroutine(Counter(solved: true));
+            }
             else
                 StartCoroutine(Counter());
-
-            if (currentStage == 3)
-                StartCoroutine(Counter(solved:true));
 
             OffSwitch.AddInteractionPunch();
             Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, OffSwitch.transform);
@@ -92,6 +90,7 @@ public class SimonShinesScript : MonoBehaviour
             OffSwitch.gameObject.SetActive(false);
             OnSwitch.gameObject.SetActive(true);
             LightParent.gameObject.SetActive(false);
+            Emitter.material.color = Color.white;
             SimonShines.UpdateChildren();
             currentStage++;
             return false;
@@ -105,23 +104,21 @@ public class SimonShinesScript : MonoBehaviour
         OnSwitch.OnInteract += OnPressed();
         OffSwitch.OnInteract += OffPressed();
 
-        newSecond = initialSecond = DigitalRoot(Bomb.GetSerialNumberNumbers().Sum() * 2);
-        Debug.LogFormat(@"[Simon Shines #{0}] Initial second is {1}.", moduleId, initialSecond);
+        stageSeconds[0] = DigitalRoot(Bomb.GetSerialNumberNumbers().Sum() * 2);
+        Debug.LogFormat(@"[Simon Shines #{0}] Initial second is {1}.", moduleId, stageSeconds[0]);
 
-        colors = new Colors[]
-        {
-        new Colors { Color = new Color32(255,0,0,120) , ColorName = "Red", Modifier = (initialTime, bomb) => DigitalRoot(initialTime * 2)},
-        new Colors { Color = new Color32(0,255,0,120) , ColorName = "Green", Modifier = (initialTime, bomb) => DigitalRoot((bomb.GetBatteryCount() > bomb.GetIndicators().Count() ? bomb.GetBatteryCount() : bomb.GetIndicators().Count()) + initialTime)},
-        new Colors { Color = new Color32(0,0,255,120) , ColorName = "Blue", Modifier = (initialTime, bomb) => DigitalRoot(initialTime / 2)},
-        new Colors { Color = new Color32(0,255,255,120) , ColorName = "Yellow", Modifier = (initialTime, bomb) => DigitalRoot((bomb.GetPortPlateCount() > bomb.GetBatteryHolderCount() ? bomb.GetPortPlateCount() : bomb.GetBatteryHolderCount()) + initialTime)},
-        };
-
+        colors = newArray(
+            new Colors { Color = new Color32(255, 0, 0, 120), ColorName = "Red", Modifier = (initialTime, bomb) => DigitalRoot(initialTime * 2) },
+            new Colors { Color = new Color32(0, 255, 0, 120), ColorName = "Green", Modifier = (initialTime, bomb) => DigitalRoot(Math.Max(bomb.GetBatteryCount(), bomb.GetIndicators().Count()) + initialTime) },
+            new Colors { Color = new Color32(0, 0, 255, 120), ColorName = "Blue", Modifier = (initialTime, bomb) => DigitalRoot(initialTime / 2) },
+            new Colors { Color = new Color32(255, 255, 0, 120), ColorName = "Yellow", Modifier = (initialTime, bomb) => DigitalRoot(Math.Max(bomb.GetPortPlateCount(), bomb.GetBatteryHolderCount()) + initialTime) });
         for (int i = 0; i < stageColors.Length; i++)
             generateStages(i);
-
     }
 
-    private IEnumerator Counter(bool flash = false, bool solved = false)
+    private static T[] newArray<T>(params T[] array) { return array; }
+
+    private IEnumerator Counter(bool solved = false)
     {
         if (solved)
         {
@@ -135,34 +132,32 @@ public class SimonShinesScript : MonoBehaviour
                 setColor(i);
                 yield return new WaitForSeconds(.2f);
             }
-            Module.HandlePass();
             Debug.LogFormat(@"[Simon Shines #{0}] Module solved.", moduleId);
-            moduleSolved = true;
+            Module.HandlePass();
         }
         else
         {
-            if (flash)
+            var stage = currentStage;
+            var strikes = Bomb.GetStrikes();
+            var multiplier = strikes == 0 ? 1 : strikes == 1 ? 1.25 : strikes == 2 ? 1.5 : strikes == 3 ? 1.75 : 2;
+            Debug.LogFormat("<> flashing colors for stage {0}, which are {1} (len {2})", currentStage, stageColors[currentStage].Join(","), stageColors[currentStage].Length);
+            if (stageColors[currentStage].Length > 1)
             {
-                while (pressedSecond - (int) Bomb.GetTime() < 2)
+                while (pressedTime - Time.time < 2 / multiplier && !offPressed && currentStage == stage)
                 {
-                    for (int i = 0; i < 2; i++)
+                    for (int i = 0; i < 2 && !offPressed && currentStage == stage; i++)
                     {
+                        Debug.LogFormat("<> flashing color {2} for stage {0}, which is {1}", currentStage, stageColors[currentStage][i], i);
                         setColor(stageColors[currentStage][i]);
                         yield return new WaitForSeconds(.3f);
                     }
-                    if (offPressed)
-                        break;
                 }
             }
             else
             {
                 setColor(stageColors[currentStage][0]);
-                while (pressedSecond - (int) Bomb.GetTime() < 2)
-                {
+                while (pressedTime - Time.time < 2 / multiplier && !offPressed && currentStage == stage)
                     yield return null;
-                    if (offPressed)
-                        break;
-                }
             }
             if (!offPressed)
             {
@@ -171,6 +166,7 @@ public class SimonShinesScript : MonoBehaviour
                 OffSwitch.gameObject.SetActive(false);
                 OnSwitch.gameObject.SetActive(true);
                 LightParent.gameObject.SetActive(false);
+                Emitter.material.color = Color.white;
                 SimonShines.UpdateChildren();
             }
         }
@@ -179,58 +175,32 @@ public class SimonShinesScript : MonoBehaviour
 
     void setColor(int color)
     {
-        Emitter.color = colors[color].Color;
+        Emitter.material.color = colors[color].Color;
         for (int i = 0; i < Lights.Length; i++)
-        {
             Lights[i].color = colors[color].Color;
-        }
     }
 
     void generateStages(int stage)
     {
-        if (rnd.Range(0, 2) == 0)
-        {
-            var c = Enumerable.Range(0, 4).ToList().Shuffle();
-            stageColors[stage] = new int[] { c[0], c[1] };
-        }
-        else
-            stageColors[stage] = new int[] { rnd.Range(0, 4) };
+        stageColors[stage] = Enumerable.Range(0, 4).ToArray().Shuffle().Take(rnd.Range(1, 3)).ToArray();
 
         if (stageColors[stage].Length > 1)
         {
-            newSecond = stageColors[stage][0] < stageColors[stage][1] ? colors[stageColors[stage][0]].Modifier(newSecond, Bomb) : colors[stageColors[stage][1]].Modifier(newSecond, Bomb);
-            newSecond = stageColors[stage][0] < stageColors[stage][1] ? colors[stageColors[stage][1]].Modifier(newSecond, Bomb) : colors[stageColors[stage][0]].Modifier(newSecond, Bomb);
-            stageSeconds[stage] = newSecond;
+            var tmp = colors[Math.Min(stageColors[stage][0], stageColors[stage][1])].Modifier(stageSeconds[stage], Bomb);
+            stageSeconds[stage + 1] = colors[Math.Max(stageColors[stage][0], stageColors[stage][1])].Modifier(tmp, Bomb);
         }
         else
-        {
-            newSecond = colors[stageColors[stage][0]].Modifier(newSecond, Bomb);
-            stageSeconds[stage] = newSecond;
-        }
+            stageSeconds[stage + 1] = colors[stageColors[stage][0]].Modifier(stageSeconds[stage], Bomb);
 
-        Debug.LogFormat(@"[Simon Shines #{0}] Stage {1}: Color(s) flashing = {2} - Correct time to press: {3}", moduleId, stage + 1, stageColors[stage].Length > 1 ? Enumerable.Range(0, 2).Select(i => colors[stageColors[stage][i]].ColorName).Join(", ") : colors[stageColors[stage][0]].ColorName, stageSeconds[stage]);
-
+        Debug.LogFormat(@"[Simon Shines #{0}] Stage {1}: Color(s) flashing = {2} - Correct time to press: {3}",
+            moduleId,
+            stage + 1,
+            stageColors[stage].Select(color => colors[color].ColorName).Join(", "),
+            stageSeconds[stage + 1]);
     }
 
     private static int DigitalRoot(int number)
     {
-        while (number / 10 != 0)
-        {
-            int sum = 0;
-            int i = 10;
-            int j = 1;
-
-            while (number / j >= 1)
-            {
-                sum += number % i / j;
-
-                i *= 10;
-                j *= 10;
-            }
-
-            number = sum;
-        }
-
-        return number;
+        return (number - 1) % 9 + 1;
     }
 }
