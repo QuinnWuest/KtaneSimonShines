@@ -1,0 +1,22 @@
+fileFormatVersion: 2
+guid: 9d6a838f8ee3b2145b0420a427ddf0e4
+TrueTypeFontImporter:
+  externalObjects: {}
+  serializedVersion: 4
+  fontSize: 16
+  forceTextureCase: -2
+  characterSpacing: 0
+  characterPadding: 1
+  includeFontData: 1
+  fontName: Aberforth Rough
+  fontNames:
+  - Aberforth Rough
+  fallbackFontReferences:
+  - {fileID: 12800000, guid: b89c3ea558fabba48aec031844f8fddb, type: 3}
+  customCharacters: 
+  fontRenderingMode: 0
+  ascentCalculationMode: 1
+  useLegacyBoundsCalculation: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
