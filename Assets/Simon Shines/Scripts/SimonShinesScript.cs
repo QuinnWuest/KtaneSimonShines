@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Linq;
+using System.Text.RegularExpressions;
 using KModkit;
 using UnityEngine;
 using rnd = UnityEngine.Random;
@@ -10,7 +11,7 @@ public class SimonShinesScript : MonoBehaviour
     public KMAudio Audio;
     public KMBombInfo Bomb;
     public KMBombModule Module;
-
+    
     public KMSelectable OnOffSwitch;
     public Light[] Lights;
     public MeshRenderer Emitter;
@@ -33,14 +34,20 @@ public class SimonShinesScript : MonoBehaviour
     private readonly int[][] stageColors = new int[4][];
     private readonly int[] stageSeconds = new int[5];
 
-    static int moduleIdCounter = 1;
-    int moduleId;
-    bool moduleSolved;
+    private int moduleId;
+    private static int moduleIdCounter = 1;
+    private bool moduleSolved;
+
+    public KMColorblindMode ColorblindMode;
+    private bool _colorblindMode;
+    public TextMesh ColorblindText;
 
     private void Start()
     {
         moduleId = moduleIdCounter++;
 
+        _colorblindMode = ColorblindMode.ColorblindModeActive;
+        SetColorblindMode(_colorblindMode);
         OnOffSwitch.OnInteract += OnOffPressed();
 
         stageSeconds[0] = DigitalRoot(Bomb.GetSerialNumberNumbers().Sum() * 2);
@@ -55,6 +62,11 @@ public class SimonShinesScript : MonoBehaviour
             generateStages(i);
     }
 
+    private void SetColorblindMode(bool mode)
+    {
+        ColorblindText.gameObject.SetActive(mode);
+    }
+
     private KMSelectable.OnInteractHandler OnOffPressed()
     {
         return delegate
@@ -65,13 +77,14 @@ public class SimonShinesScript : MonoBehaviour
             {
                 onOff = false;
                 OnOffSwitch.GetComponent<Transform>().localEulerAngles = new Vector3(0f, 180f, 0f);
-                var digit = (int) (Bomb.GetTime() % 10);
+                var digit = (int)(Bomb.GetTime() % 10);
                 if (stageSeconds[currentStage] != digit)
                 {
                     Module.HandleStrike();
                     Debug.LogFormat(@"[Simon Shines #{0}] Defuser struck! Switch was pressed at digit {1} instead of {2}. Reset to beginning.", moduleId, digit, stageSeconds[currentStage]);
                     currentStage = 0;
                     LightParent.gameObject.SetActive(false);
+                    ColorblindText.text = "";
                     onOff = true;
                     OnOffSwitch.GetComponent<Transform>().localEulerAngles = new Vector3(0f, 0f, 0f);
                     Emitter.material.color = Color.white;
@@ -99,6 +112,7 @@ public class SimonShinesScript : MonoBehaviour
                 offPressed = true;
                 Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, OnOffSwitch.transform);
                 LightParent.gameObject.SetActive(false);
+                ColorblindText.text = "";
                 Emitter.material.color = Color.white;
                 currentStage++;
                 return false;
@@ -123,17 +137,16 @@ public class SimonShinesScript : MonoBehaviour
             Debug.LogFormat(@"[Simon Shines #{0}] Module solved.", moduleId);
             Module.HandlePass();
             LightParent.gameObject.SetActive(false);
+            ColorblindText.text = "";
             Emitter.material.color = Color.white;
 
         }
         else
         {
             var stage = currentStage;
-            var strikes = Bomb.GetStrikes();
-            var multiplier = strikes == 0 ? 1 : strikes == 1 ? 1.25 : strikes == 2 ? 1.5 : strikes == 3 ? 1.75 : 2;
             if (stageColors[currentStage].Length > 1)
             {
-                while (Mathf.Abs(pressedTime - Time.time) < 2 / multiplier && !offPressed && currentStage == stage)
+                while (Mathf.Abs(pressedTime - Time.time) < GetSwitchTime() && !offPressed && currentStage == stage)
                 {
                     for (int i = 0; i < 2 && !offPressed && currentStage == stage; i++)
                     {
@@ -145,7 +158,7 @@ public class SimonShinesScript : MonoBehaviour
             else
             {
                 setColor(stageColors[currentStage][0]);
-                while (Mathf.Abs(pressedTime - Time.time) < 2 / multiplier && !offPressed && currentStage == stage)
+                while (Mathf.Abs(pressedTime - Time.time) < GetSwitchTime() && !offPressed && currentStage == stage)
                     yield return null;
             }
             if (!offPressed)
@@ -154,6 +167,7 @@ public class SimonShinesScript : MonoBehaviour
                 Debug.LogFormat(@"[Simon Shines #{0}] Defuser struck! Reason: The light was shining for too long. Reset to beginning.", moduleId);
                 currentStage = 0;
                 LightParent.gameObject.SetActive(false);
+                ColorblindText.text = "";
                 onOff = true;
                 OnOffSwitch.GetComponent<Transform>().localEulerAngles = new Vector3(0f, 0f, 0f);
                 Emitter.material.color = Color.white;
@@ -162,11 +176,20 @@ public class SimonShinesScript : MonoBehaviour
         yield return null;
     }
 
+    private double GetStrikeMultiplier()
+    {
+        return Bomb.GetStrikes() == 0 ? 1 : Bomb.GetStrikes() == 1 ? 1.25 : Bomb.GetStrikes() == 2 ? 1.5 : Bomb.GetStrikes() == 3 ? 1.75 : 2;
+    }
+
     private void setColor(int color)
     {
         Emitter.material.color = colors[color].Color;
         for (int i = 0; i < Lights.Length; i++)
+        {
             Lights[i].color = colors[color].Color;
+            ColorblindText.text = colors[color].ColorName;
+            ColorblindText.color = new Color32[] { new Color32(255, 0, 0, 255), new Color32(0, 255, 0, 255), new Color32(0, 0, 255, 255), new Color32(255, 255, 0, 255) }[color];
+        }
     }
 
     private void generateStages(int stage)
@@ -191,5 +214,54 @@ public class SimonShinesScript : MonoBehaviour
     private static int DigitalRoot(int number)
     {
         return (number - 1) % 9 + 1;
+    }
+
+#pragma warning disable 0414
+    private readonly string TwitchHelpMessage = "!{0} flip at 4 [Flip the switch when the last digit of the timer is 4.] | 'flip at' is optional.";
+#pragma warning restore 0414
+
+    private IEnumerator ProcessTwitchCommand(string command)
+    {
+        Match m;
+        m = Regex.Match(command, @"^\s*(colou?rblind|cb)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (m.Success)
+        {
+            yield return null;
+            _colorblindMode = !_colorblindMode;
+            SetColorblindMode(_colorblindMode);
+            yield break;
+        }
+        m = Regex.Match(command, @"^\s*((flip|press|submit)\s+(at\s+)?)?(?<d>\d)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!m.Success)
+            yield break;
+        yield return null;
+        int num = int.Parse(m.Groups["d"].Value);
+        while ((int)Bomb.GetTime() % 10 != num)
+            yield return "trycancel";
+        yield return "strike";
+        yield return "solve";
+        OnOffSwitch.OnInteract();
+        yield return new WaitForSeconds(GetSwitchTime() - 0.2f);
+        OnOffSwitch.OnInteract();
+        yield break;
+    }
+
+    private float GetSwitchTime()
+    {
+        return 2 / (Bomb.GetStrikes() == 0 ? 1 : Bomb.GetStrikes() == 1 ? 1.25f : Bomb.GetStrikes() == 2 ? 1.5f : Bomb.GetStrikes() == 3 ? 1.75f : 2);
+    }
+
+    private IEnumerator TwitchHandleForcedSolve()
+    {
+        while (!moduleSolved)
+        {
+            int t = stageSeconds[currentStage];
+            while ((int)Bomb.GetTime() % 10 != t)
+                yield return true;
+            OnOffSwitch.OnInteract();
+            yield return new WaitForSeconds(GetSwitchTime() - 0.2f);
+            OnOffSwitch.OnInteract();
+            yield return new WaitForSeconds(0.1f);
+        }
     }
 }

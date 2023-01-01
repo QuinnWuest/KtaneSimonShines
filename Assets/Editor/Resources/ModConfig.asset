@@ -12,15 +12,12 @@ MonoBehaviour:
   m_Name: ModConfig
   m_EditorClassIdentifier: 
   id: SimonShinesModule
-  title: Simon Shines
+  title: Simon Shines [REUPLOAD]
   author: Goofy
-  description: 'Handle a fragile light to solve this module.
-
-
-    Manual Graphics by JG
-
-
-'
+  description: "Handle a fragile light to solve this module.\nManual Graphics by JG\n\nThis
+    is a reupload of Goofy's module with changes and bug fixes. Unsubscribe from the
+    old version here:\r\nhttps://steamcommunity.com/sharedfiles/filedetails/?id=2684281526\r\n\r\n[url=https://ktane.timwi.de/HTML/Simon%20Shines.html]Manual
+    HTML[/url]\r\n[url=https://ktane.timwi.de/PDF/Simon%20Shines.pdf]Manual PDF[/url]"
   version: 1.0
   outputFolder: build
   previewImage: {fileID: 2800000, guid: 7b18c07327d9be24d8cf09d16f8c6ef6, type: 3}
