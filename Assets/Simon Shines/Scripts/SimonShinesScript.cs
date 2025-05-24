@@ -217,7 +217,7 @@ public class SimonShinesScript : MonoBehaviour
     }
 
 #pragma warning disable 0414
-    private readonly string TwitchHelpMessage = "!{0} flip at 4 [Flip the switch when the last digit of the timer is 4.] | 'flip at' is optional.";
+    private readonly string TwitchHelpMessage = "!{0} flip at 4 [Flip the switch when the last digit of the timer is 4.] | 'flip at' is optional. | Note: When the light is turned on, it will automatically be turned off after 2 timer ticks.";
 #pragma warning restore 0414
 
     private IEnumerator ProcessTwitchCommand(string command)
